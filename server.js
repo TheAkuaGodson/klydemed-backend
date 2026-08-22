@@ -52,9 +52,11 @@ IMPORTANT:
 - If the expiry date cannot be clearly read, return "not visible".
 - If the medication name cannot be clearly read, return "unclear".
 - The expected medication name is provided separately.
-- Only mark MATCH as true when the detected medication clearly matches
+- Only mark match as true when the detected medication clearly matches
   the expected medication.
 - Do not use general visual similarity as proof of a medication match.
+- Respond with ONLY a raw JSON object, no markdown code fences, no
+  extra commentary before or after it.
           `,
         },
 
@@ -118,27 +120,37 @@ Do not invent information that cannot be read or verified from the image.
         },
       ],
 
-      response_format: {
-        type: 'json_object',
-      },
-
+      // NOTE: strict JSON mode (response_format: json_object) was removed —
+      // on Groq, that mode combined with image input was causing a
+      // 400 "json_validate_failed" error for this model. We instead rely
+      // on the prompt itself to enforce JSON output, and parse leniently
+      // below (stripping markdown fences if the model adds them anyway).
       temperature: 0,
       max_completion_tokens: 500,
     });
 
-    const text =
+    const rawText =
       completion?.choices?.[0]?.message?.content || '{}';
 
     console.log('--- RAW GROQ RESPONSE ---');
-    console.log(text);
+    console.log(rawText);
     console.log('-------------------------');
+
+    // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    const cleanedText = rawText
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
 
     let result;
 
     try {
-      result = JSON.parse(text);
+      result = JSON.parse(cleanedText);
     } catch (parseError) {
       console.error('Failed to parse model JSON:', parseError);
+      console.error('Cleaned text was:', cleanedText);
 
       return res.status(500).json({
         error: 'The AI returned an invalid response.',

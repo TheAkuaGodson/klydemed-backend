@@ -47,10 +47,6 @@ Your job is to carefully inspect the medication package image.
 IMPORTANT:
 - Read the actual text printed on the package.
 - Do not guess a medication name when the text is unclear.
-- Pay special attention to the medicine name, strength, dosage form,
-  and expiry date.
-- If the expiry date cannot be clearly read, return "not visible".
-- If the medication name cannot be clearly read, return "unclear".
 - The expected medication name is provided separately.
 - Only mark match as true when the detected medication clearly matches
   the expected medication.
@@ -76,8 +72,6 @@ Return ONLY valid JSON using exactly this structure:
 {
   "detectedDrug": "string",
   "match": true,
-  "expiryDate": "string",
-  "expiryStatus": "OK",
   "info": "string"
 }
 
@@ -90,18 +84,6 @@ Use "unclear" if you cannot confidently read it.
 match:
 true only if detectedDrug clearly matches "${expectedDrug}".
 Otherwise false.
-
-expiryDate:
-The expiry date printed on the package.
-Use "not visible" if you cannot clearly see it.
-
-expiryStatus:
-Use exactly one of:
-"OK"
-"EXPIRED"
-"UNKNOWN"
-
-Use UNKNOWN when the expiry date cannot be confidently determined.
 
 info:
 One short sentence describing what this medication is generally used for.
@@ -126,13 +108,8 @@ Do not invent information that cannot be read or verified from the image.
       // on the prompt itself to enforce JSON output, and parse leniently
       // below (stripping the model's <think> reasoning block and any
       // markdown fences before parsing).
-      //
-      // max_completion_tokens raised from 500 to 2000 — this is a
-      // "thinking" model that writes out step-by-step reasoning before
-      // its final answer, and 500 was cutting that reasoning off before
-      // it ever reached the JSON.
       temperature: 0,
-      max_completion_tokens: 2000,
+      max_completion_tokens: 1500,
     });
 
     const rawText =
@@ -187,19 +164,6 @@ Do not invent information that cannot be read or verified from the image.
 
     const match = result.match === true;
 
-    const expiryDate =
-      typeof result.expiryDate === 'string'
-        ? result.expiryDate.trim()
-        : 'Not visible';
-
-    const allowedExpiryStatuses = ['OK', 'EXPIRED', 'UNKNOWN'];
-
-    const expiryStatus = allowedExpiryStatuses.includes(
-      String(result.expiryStatus).toUpperCase()
-    )
-      ? String(result.expiryStatus).toUpperCase()
-      : 'UNKNOWN';
-
     const info =
       typeof result.info === 'string'
         ? result.info.trim()
@@ -208,8 +172,6 @@ Do not invent information that cannot be read or verified from the image.
     res.json({
       match,
       detectedDrug,
-      expiryDate,
-      expiryStatus,
       info,
     });
 

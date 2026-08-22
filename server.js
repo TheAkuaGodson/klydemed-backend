@@ -124,9 +124,15 @@ Do not invent information that cannot be read or verified from the image.
       // on Groq, that mode combined with image input was causing a
       // 400 "json_validate_failed" error for this model. We instead rely
       // on the prompt itself to enforce JSON output, and parse leniently
-      // below (stripping markdown fences if the model adds them anyway).
+      // below (stripping the model's <think> reasoning block and any
+      // markdown fences before parsing).
+      //
+      // max_completion_tokens raised from 500 to 2000 — this is a
+      // "thinking" model that writes out step-by-step reasoning before
+      // its final answer, and 500 was cutting that reasoning off before
+      // it ever reached the JSON.
       temperature: 0,
-      max_completion_tokens: 500,
+      max_completion_tokens: 2000,
     });
 
     const rawText =
@@ -136,13 +142,30 @@ Do not invent information that cannot be read or verified from the image.
     console.log(rawText);
     console.log('-------------------------');
 
+    // Strip the model's <think>...</think> reasoning block, if present —
+    // only the JSON after it is the actual answer.
+    let cleanedText = rawText;
+    const thinkEndIndex = cleanedText.indexOf('</think>');
+    if (thinkEndIndex !== -1) {
+      cleanedText = cleanedText.slice(thinkEndIndex + '</think>'.length);
+    }
+
     // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
-    const cleanedText = rawText
+    cleanedText = cleanedText
       .trim()
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim();
+
+    // As a last resort, if there's still stray text around the JSON,
+    // extract just the first {...} block.
+    if (!cleanedText.startsWith('{')) {
+      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedText = jsonMatch[0];
+      }
+    }
 
     let result;
 
